@@ -1,6 +1,7 @@
 #include "clazzes.h"
 #include <ncurses.h>
 #include <queue>
+#include <unistd.h>
 
 using namespace std;
 
@@ -114,7 +115,7 @@ bool check(spot &entity, const int dir, int &lastmove) { //this function prevent
 }
 
 void Die(/*spot no, int nope*/) { //just in case (variables to be used later)
-	//endwin();              //the useless parameters allow it to be pushed into the heap
+	endwin();              //the useless parameters allow it to be pushed into the heap
 	system("clear");
 	cout << "Bad function" << endl;
 	exit(0);
@@ -258,6 +259,7 @@ class action_re {//rewriting the action class?
 		int spot_x;
 		int spot_y;
 		int call_function;
+		int zed_type;
 	public:
 		int time = 1;
 		action_re(){;}
@@ -266,6 +268,15 @@ class action_re {//rewriting the action class?
 			time = timev;
 			spot_x = spot.at(0);
 			spot_y = spot.at(1);
+			call_function = function_num;
+		}
+		action_re(int timev, int function_num){
+			time = timev;
+			call_function = function_num;
+		}
+		action_re(int timev, int function_num, int new_zed_type) {
+			zed_type = new_zed_type;
+			time = timev;
 			call_function = function_num;
 		}
 		bool operator< (const action_re& y) const {
@@ -277,6 +288,7 @@ class action_re {//rewriting the action class?
 			return false;
 		}
 		int get_time() {return time;}
+		int get_function() {return call_function;}
 };
 
 int main() {
@@ -332,12 +344,16 @@ int main() {
 		if (p1.gun()) cout << "gun" << endl;
 		else cout << "knife" << endl;
 		*/
+		printw("Arows to Move \nx to shoot\nd to dig\ns to switch weapon\n");
 		printw("Frame: %i \nHealth: %i \nGold: %i \nWeapon: ", frame, p1.get_h(), p1.get_g()); //same as the above, in C form (works with curses)
-		if (p1.gun()) printw("Gun");
-		else printw("Knife");
-		char c = getch();
-		char d;
-		if (!cin || c == 'q') break;
+		if (p1.gun()) printw("Gun\n");
+		else printw("Knife\n");
+		printw("segfault here\n");
+		int c = getch();
+		printw("not like getch");
+		int d;
+		if (c == 'Q' || c == 'q') break;
+		else if (c == ERR) ;//do nothing
 		else if (c == UP) {
 			if (check(p1, UP, direction)) {
 				map.at(p1.get_y()).at(p1.get_x()) = OPEN;
@@ -362,9 +378,7 @@ int main() {
 				p1.change_x(-1);
 				direction = RIGHT;
 			}
-		}
-
-		else if (c == 'x') {
+		} else if (c == 'x') { //attack
 			timeout(100000); //freeze time, so player can choose attack direction
 			int q = 0;	//bad practice throughout this code: variable has no purpose, just fills in function parameter
 			if (check(p1, UP, q)) map.at(p1.get_y() - 1).at(p1.get_x()) = '|';
@@ -373,62 +387,66 @@ int main() {
 			if (check(p1, RIGHT, q)) map.at(p1.get_y()).at(p1.get_x() - 1) = '-';
 			clear();
 			print(p1, zombs, treasure);  //reprint the map 
+			printw("Choose Attack Direction\n");
 			d = getch();
 			if (d == UP || d == DOWN || d == LEFT || d == RIGHT) {
 				player_attack(p1, d, zombs); //shoot from player in direction
-				//action_re reload(frame +RELOAD_TIME, /*p1.shot(default_spot, q)*/);
+				action_re reload(frame +RELOAD_TIME, 2);
 				//p1.reload(frame +RELOAD_TIME, d);
-				//event_mgr.push(reload); //put back in a bit
+				event_mgr.push(reload);
 			}
 			if (map.at(p1.get_y() - 1).at(p1.get_x()) == '|') map.at(p1.get_y() - 1).at(p1.get_x()) = OPEN;
 			if (map.at(p1.get_y() + 1).at(p1.get_x()) == '|') map.at(p1.get_y() + 1).at(p1.get_x()) = OPEN;
 			if (map.at(p1.get_y()).at(p1.get_x() + 1) == '-') map.at(p1.get_y()).at(p1.get_x() + 1) = OPEN;
 			if (map.at(p1.get_y()).at(p1.get_x() - 1) == '-') map.at(p1.get_y()).at(p1.get_x() - 1) = OPEN;
 			timeout(TIME);
-		} else if (c == 'd') {
+		} else if (c == 'd') { //dig
 			dig(p1, treasure);
-		} else if (c == 's') {
+		} else if (c == 's') { //switch weapon
 			p1.weapon();
 		}
-
+		printw("start win check\n");
 		if (p1.get_g() >= WIN_GOLD) { //check victory
 			victory = true;
 			break;
 		}
-		for (auto Zed = zombs.begin(); Zed < zombs.end(); Zed++) { //did player kill a zombie?
-			if (Zed->isded()) {
-				spot x(Zed->get_x(), Zed->get_y() );
-				int zomb_type = Zed->get_type();
-				zombs.erase(Zed);                  //get rid of zombie
+		for (auto Zed : zombs) { //did player kill a zombie?
+			if (Zed.isded()) {
+				spot x(Zed.get_x(), Zed.get_y() );
+				int zomb_type = Zed.get_type();
+				//zombs.erase(Zed);                  //mark zombie as dead
 				p1.add_g(ZOMB_LOOT);               //give player gold
-				zombie New_Zed(zomb_type, Zed->get_x(), Zed->get_y() ); //create a new zombie, in main because we actually have access to the vector of zombies here
+				zombie New_Zed(zomb_type, Zed.get_x(), Zed.get_y() ); //create a new zombie, in main because we actually have access to the vector of zombies here
 				zombs.push_back(New_Zed);
-				//action_re spawn(frame + RESPWN_TIME, /*New_Zed.awaken(default_spot, zomb_type)*/); //the vector access thing is why i added the "asleep" member to zombie
+				action_re spawn(frame + RESPWN_TIME, 3, zomb_type); //the vector access thing is why i added the "asleep" member to zombie
 				//event_mgr.push(spawn); //send respawn command to the heap
 			}
 		}
-	
-		while (frame == event_mgr.top().time)  {//check the top of the heap
-
-			/*proxy_action funct = event_mgr.top();
-			event_mgr.pop();
-			if (funct.code == 0) break;
-			if (funct.code == 1) {
-				funct.zboe->pathfind();
+		if (!event_mgr.empty()) {//check if its not empty to avoid segfault
+			while (frame == event_mgr.top().time)  {//check the top of the heap
+				action_re funct = event_mgr.top();
+				event_mgr.pop();
+				if (funct.get_function() == 0) break;
+				if (funct.get_function() == 1) {
+					//funct.zboe->pathfind();
+				}
+				else if (funct.get_function() == 2) {
+					printw("BANG\n");
+					//funct.ihatethis->shot();  //this is how you would handle events if you decide against the function pointer route
+				}                             //but honestly the function pointer is almost working, just ask danial or kerney whats wrong with the 4 lines that wont compile
+				else if (funct.get_function() == 3) {
+					//funct.zboe->awaken();
+					for (auto Zed : zombs) {
+						if (Zed.isded()) {
+							spot x(Zed.get_x(), Zed.get_y());
+							int zomb_type = Zed.get_type();
+							zombie New_Zed(zomb_type, Zed.get_x(), Zed.get_y());
+							zombs.push_back(New_Zed);
+							New_Zed.awaken();
+						}
+					}
+				}
 			}
-			else if (funct.code == 2) {
-				funct.ihatethis->shot();  //this is how you would handle events if you decide against the function pointer route
-			}                             //but honestly the function pointer is almost working, just ask danial or kerney whats wrong with the 4 lines that wont compile
-			else if (funct.code == 3) {
-				funct.zboe->awaken();
-			}
-			*/
-			//auto func = event_mgr.top().funcptr;//grab function from top of the heap
-			event_mgr.pop();
-			//func(p1, lastmove); //Call the function pointed to by the top of the heap
-
-//add if statements for function calls here =)
-			
 		}
 
 
@@ -472,6 +490,8 @@ int main() {
 		
 			}
 		}
+		printw("End of loop\n");
+		usleep(16667);
 		
 		if (p1.get_h() <= 0) break;  //check death
 
